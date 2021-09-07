@@ -2,9 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
-use App\Http\Request\RegisterAuthRequest;
-use Tymon\JwtAuth\Exceptions\JWTException;
 use Symfony\Component\HttpFoundation\Response;
 use JWTAuth;
 use Validator;
@@ -16,83 +15,76 @@ class JwtAuthController extends Controller
 {
     public $token = true;
 
+    public function __construct() {
+        $this->middleware('auth:api', ['except' => ['login', 'register']]);
+    }
+
     public function register(Request $request) {
         $validator = Validator::make($request->all(), [
-            'name' => 'required',
+            'name' => 'required|between:2,100',
+            'email' => 'required|email|unique:users|max:50',
+            'password' => 'required|confirmed|string|min:6',
+        ]);
+
+        $user = User::create(array_merge(
+            $validator->validated(),
+            ['password' => bcrypt($request->password)]
+        ));
+
+        return response()->json([
+            'error' => false,
+            'message' => 'Registered Successfully.'
+        ], Response::HTTP_CREATED);
+    }
+
+    public function login(Request $request) {
+        $validator = Validator::make($request->all(), [
             'email' => 'required|email',
-            'password' => 'required',
-            'password_confirmation' => 'required|same:password'
+            'password' => 'required|string|min:6'
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'error' => true,
-                'message' => $validator->errors()
-            ], 401);
-        }
+                'message' => 'E-mail or Password Invalid.'
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }`ca
 
-        $user = User::create([
-            'name' => $request->name,
-            'role_id' => $request->role_id,
-            'email' => $request->email,
-            'password' => bcrypt($request->password),
-        ]);
-
-        if ($this->token) {
-            return $this->login($request);
-        }
-
-        return response()->json([
-            'error' => false,
-            'data' => $user
-        ], Response::HTTP_OK);
-    }
-
-    public function login(Request $request) {
-        $input = $request->only('email', 'password');
-        $jwt_token = null;
-        if (!$jwt_token = JWTAuth::attemp($input)) {
+        if (! $token = auth()->attempt($validator->validated())) {
             return response()->json([
                 'error' => true,
-                'message' => 'Invalid Email or Password'
+                'message' => 'Unauthorized.'
             ], Response::HTTP_UNAUTHORIZED);
         }
 
+        return $this->createNewToken($token);
+    }
+
+    public function profile() {
         return response()->json([
             'error' => false,
-            'message' => 'Logged in',
-            'token' => $jwt_token
-        ]);
+            'data' => auth()->user()
+        ], Response::HTTP_OK);
     }
 
     public function logout(Request $request) {
-        $this->validate($request, [
-            'token' => 'required'
-        ]);
+        auth()->logout();
 
-        try {
-            JWTAuth::invalidate($request->token);
-            return response()->json([
-                'error' => false,
-                'message' => 'Logged out'
-            ]);
-        } catch (JWTException $exception) {
-            return response()->json([
-                'error' => true,
-                'message' => 'Fail to log out'
-            ], Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    public function getUser(Request $request) {
-        $this->validate($request, [
-            'token' => 'required'
-        ]);
-
-        $user = JWTAuth::authenticate($request->token);
         return response()->json([
             'error' => false,
-            'data' => $user
-        ]);
+            'message' => 'logged out.'
+        ], Response::HTTP_OK);
+    }
+
+    public function refresh() {
+        return $this->createNewToken(auth()->refresh());
+    }
+
+    protected function createNewToken($token) {
+        return response()->json([
+            'access_token' => $token,
+            'token_type' => 'bearer',
+            'expires_in' => auth()->factory()->getTTL() * 60
+        ], Response::HTTP_OK);
     }
 }

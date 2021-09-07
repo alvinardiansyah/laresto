@@ -18,12 +18,18 @@ Route::middleware('auth:api')->get('/user', function (Request $request) {
     return $request->user();
 });
 
-Route::post('login', 'JwtAuthController@login');
-Route::post('register', 'JwtAuthController@register');
+Route::group([
+    'middleware' => 'api',
+    'prefix' => 'auth'
 
-Route::group(['middleware' => 'auth:jwt'], function () {
-    Route::get('logout', 'JwtAuthController@logout');
-    Route::get('user-info', 'JwtAuthController@getUser');
+], function ($router) {
+
+    Route::post('register', 'JwtAuthController@register');
+    Route::post('login', 'JwtAuthController@login');
+    Route::post('logout', 'JwtAuthController@logout');
+    Route::post('refresh', 'JwtAuthController@refresh');
+    Route::get('profile', 'JwtAuthController@profile');
+
 });
 
 Route::get('/roles', 'ApiController@roles');
